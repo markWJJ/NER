@@ -5,7 +5,8 @@ global PATH
 PATH=os.path.split(os.path.realpath(__file__))[0]
 import logging
 import util
-
+import jieba
+import re
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
                     datefmt='%a, %d %b %Y %H:%M:%S',
@@ -38,7 +39,7 @@ class Entity_Extration_Data(object):
         elif flag=="test" or flag=="train":
             self.vocab=pickle.load(open(PATH+"/vocab.p",'rb'))  # 词典
         self.index=0
-        self.sent, self.sent_len, self.label,self.file_size = self._train_data()
+        self.sent, self.sent_len, self.label,self.file_size,self.seg = self._train_data()
         if self.batch_size > self.file_size:
             _logger.error("batch规模大于训练数据规模！")
 
@@ -99,12 +100,56 @@ class Entity_Extration_Data(object):
         test_file.close()
         return vocab
 
+    def seg_feature(self,seg_list):
+        '''
+        构建分词特征
+        :param seg_list:
+        :return:
+        '''
+        seg_fea=[]
+        for e in seg_list:
+            if len(e)==1:
+                seg_fea.append(0)
+            else:
+                ss=[2]*len(e)
+                ss[0]=1
+                ss[-1]=3
+                seg_fea.extend(ss)
+        return seg_fea
+
+    def _convert_sent(self,sent):
+        '''
+        将sent中的数字分开
+        :param sent:
+        :return:
+        '''
+        # pattern='\d.*'
+        # seg = str(sent).replace("\n", "")
+        # seg = ''.join([e for e in seg.split(' ')])
+        # new_seg=[]
+        # for e in seg:
+        #     ee=re.sub(pattern,'NUM',e)
+        #     new_seg.append(ee)
+        sents = str(sent).replace("\n", "")
+        sents = ''.join([e for e in sents.split(' ')])
+        new_sent=[e for e in sents]
+        return ' '.join(new_sent)
+
+
     def sent2vec(self,sent,max_len):
         '''
         根据vocab将句子转换为向量
         :param sent: 
         :return: 
         '''
+
+        sent=self._convert_sent(sent)
+        seg=str(sent).replace("\n","")
+
+
+        seg=''.join([e for e in seg.split(' ')])
+        seg_list=[e for e in jieba.cut(seg)]
+        seg_list=self.seg_feature(seg_list)
 
         sent=str(sent).replace("\n","")
         sent_list=[]
@@ -118,14 +163,22 @@ class Entity_Extration_Data(object):
 
         if len(sent_list)>=max_len:
             new_sent_list=sent_list[0:max_len]
+            new_seg_list=seg_list[0:max_len]
         else:
             new_sent_list=sent_list
             ss=[0]*(max_len-len(sent_list))
             new_sent_list.extend(ss)
+
+            new_seg_list=seg_list
+            ss_=[0]*(max_len-len(seg_list))
+            new_seg_list.extend(ss_)
+
         sent_vec=np.array(new_sent_list)
+        seg_vec=np.array(new_seg_list)
+
         if real_len>=max_len:
             real_len=max_len
-        return sent_vec,real_len
+        return sent_vec,real_len,seg_vec
 
     def get_ev_ans(self,sentence):
         '''
@@ -149,7 +202,8 @@ class Entity_Extration_Data(object):
         :return: 
         '''
         train_file = open(self.train_path, 'r')
-        sent_list = []  # 句子list
+        sent_list = []  # 句子的char list
+        seg_list=[] #句子seg的list
         label_list = []  # label list
         file_size = 0
         sent_len_list = []
@@ -176,19 +230,19 @@ class Entity_Extration_Data(object):
                 ss=[0]*(self.sent_length-len(label_))
                 label_.extend(ss)
             label = label_
-            sent_vec, sent_real_len = self.sent2vec(sent_sentence, self.sent_length)
+            sent_vec, sent_real_len,seg_vec = self.sent2vec(sent_sentence, self.sent_length)
 
             sent_list.append(sent_vec)
-
+            seg_list.append(seg_vec)
             sent_len_list.append(sent_real_len)
             label_list.append(label)
         train_file.close()
         result_sent = np.array(sent_list)
         result_sent_len_list = np.array(sent_len_list)
         result_label = np.array(label_list)
-
-        sent,sent_len,label = self.shuffle_(result_sent, result_sent_len_list, result_label)[:]
-        return sent,sent_len,label,file_size
+        return_seg=np.array(seg_list)
+        sent,sent_len,label,seg = self.shuffle_(result_sent, result_sent_len_list, result_label,return_seg)[:]
+        return sent,sent_len,label,file_size,seg
 
     def shuffle_(self,*args):
         '''
@@ -218,13 +272,16 @@ class Entity_Extration_Data(object):
             return_sent=self.sent[self.index*self.batch_size:(self.index+1)*self.batch_size]
             return_sent_len=self.sent_len[self.index*self.batch_size:(self.index+1)*self.batch_size]
             return_label=self.label[self.index*self.batch_size:(self.index+1)*self.batch_size]
+            return_seg=self.seg[self.index*self.batch_size:(self.index+1)*self.batch_size]
             self.index+=1
         else:
             self.index=0
             return_sent=self.sent[0:self.batch_size]
             return_sent_len=self.sent_len[0:self.batch_size]
             return_label=self.label[0:self.batch_size]
-        return return_sent,return_sent_len,return_label
+            return_seg=self.seg[0:self.batch_size]
+
+        return return_sent,return_sent_len,return_label,return_seg
 
     def get_dev(self,begin_id,end_id):
         '''
@@ -353,18 +410,19 @@ if __name__ == '__main__':
     id2label=dd.id2label
     id2word=dd.id2word
     mm = util.Merge()
-
-    for _ in range(10):
-        sents,sent_lens,labels=dd.next_batch()
-
-        for sent,label,sent_len in zip(sents,labels,sent_lens):
-            sent=sent[:sent_len]
-            label=label[:sent_len]
-            sent=[id2word[e] for e in sent]
-            label=[id2label[str(e)] for e in label]
-
-            rr_word=mm.merge_word(sent,label)
-            print(rr_word)
+    _,_,_,seg=dd.next_batch()
+    print(np.array(seg).shape)
+    # for _ in range(10):
+    #     sents,sent_lens,labels,seg=dd.next_batch()
+    #
+    #     for sent,label,sent_len in zip(sents,labels,sent_lens):
+    #         sent=sent[:sent_len]
+    #         label=label[:sent_len]
+    #         sent=[id2word[e] for e in sent]
+    #         label=[id2label[str(e)] for e in label]
+    #
+    #         rr_word=mm.merge_word(sent,label)
+    #         print(rr_word)
 
 
 
