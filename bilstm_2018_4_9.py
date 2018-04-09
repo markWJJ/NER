@@ -26,12 +26,14 @@ class Config(object):
     learning_rate=0.05
     batch_size=200
     sent_len=80    # 问句长度
-    embedding_dim=100    #词向量维度
+    seg_embedding_dim=50
+    seg_num=4
+    embedding_dim=50    #词向量维度
     hidden_dim=100
     train_dir='./data/train_out_%s.txt'
     dev_dir='./data/dev_out.txt'
     test_dir='./data/test.txt'
-    model_dir='./save_model/model_%s/r_net_model_%s.ckpt'
+    model_dir='./save_model_1/model_%s/r_net_model_%s.ckpt'
     if not os.path.exists('./save_model/model_%s_'):
         os.makedirs('./save_model/model_%s_')
     use_cpu_num=8
@@ -39,7 +41,7 @@ class Config(object):
     summary_write_dir="./tmp/r_net.log"
     epoch=10
     lambda1=0.01
-    model_mode='bilstm_attention_crf' #模型选择：bilstm bilstm+crf bilstm+attention bilstm+attention+crf
+    model_mode='bilstm_attention_crf' #模型选择：bilstm bilstm_crf bilstm_attention bilstm_attention_crf,cnn_crf
 
 config=Config()
 tf.app.flags.DEFINE_float("lambda1", config.lambda1, "l2学习率")
@@ -49,6 +51,8 @@ tf.app.flags.DEFINE_integer("batch_size", config.batch_size, "批处理的样本
 tf.app.flags.DEFINE_integer("sent_len", config.sent_len, "句子长度")
 tf.app.flags.DEFINE_integer("embedding_dim", config.embedding_dim, "词嵌入维度.")
 tf.app.flags.DEFINE_integer("hidden_dim", config.hidden_dim, "中间节点维度.")
+tf.app.flags.DEFINE_integer("seg_embedding_dim", config.seg_embedding_dim, "seg 输入维度.")
+tf.app.flags.DEFINE_integer("seg_num", config.seg_num, "seg 种类数量.")
 tf.app.flags.DEFINE_integer("use_cpu_num", config.use_cpu_num, "限定使用cpu的个数")
 tf.app.flags.DEFINE_integer("epoch", config.epoch, "epoch次数")
 tf.app.flags.DEFINE_string("summary_write_dir", config.summary_write_dir, "训练数据过程可视化文件保存地址")
@@ -56,7 +60,7 @@ tf.app.flags.DEFINE_string("train_dir", config.train_dir, "训练数据的路径
 tf.app.flags.DEFINE_string("dev_dir", config.dev_dir, "验证数据文件路径")
 tf.app.flags.DEFINE_string("test_dir", config.test_dir, "测试数据文件路径")
 tf.app.flags.DEFINE_string("model_dir", config.model_dir, "模型保存路径")
-tf.app.flags.DEFINE_string("mod", "infer", "默认为训练") # true for prediction
+tf.app.flags.DEFINE_string("mod", "train", "默认为训练") # true for prediction
 tf.app.flags.DEFINE_string('model_mode',config.model_mode,'模型类型')
 FLAGS = tf.app.flags.FLAGS
 
@@ -65,7 +69,11 @@ FLAGS = tf.app.flags.FLAGS
 
 class Bilstm(object):
 
-    def __init__(self,num_class,hidden_dim,seq_len,seq_dim,mode,batch_size,embedding_dim,vocab_num,crf_mode,loss_weight_mode,iter_num):
+    def __init__(self,num_class,hidden_dim,seq_len,seq_dim,mode,batch_size,embedding_dim,vocab_num,crf_mode,
+                 loss_weight_mode,iter_num,seg_num,seg_embedding_dim):
+
+        self.seg_num=seg_num
+        self.seg_embedding_dim=seg_embedding_dim
         self.num_class=num_class
         self.hidden_dim=hidden_dim
         self.seq_len=seq_len
@@ -77,10 +85,17 @@ class Bilstm(object):
         self.loss_weight_mode=loss_weight_mode
         self.embedding_dim=embedding_dim
         self.embedding=tf.Variable(tf.random_uniform(shape=(vocab_num,embedding_dim),minval=-1.0,maxval=1.0,dtype=tf.float32))
+        self.seg_embedding=tf.Variable(tf.random_uniform(shape=(self.seg_num,seg_embedding_dim),minval=-1.0,maxval=1.0,dtype=tf.float32))
         self.X_sent=tf.placeholder(shape=(None,self.seq_len),dtype=tf.int32)
+        self.seg_input=tf.placeholder(shape=(None,self.seq_len),dtype=tf.int32)
+
         self.input_emb=tf.nn.embedding_lookup(self.embedding,self.X_sent)
+        self.seg_input_emb=tf.nn.embedding_lookup(self.seg_embedding,self.seg_input)
+
         self.Y = tf.placeholder(shape=(None,self.seq_len), dtype=tf.int32)
-        X_=tf.transpose(self.input_emb,[1,0,2])
+
+        input_emb=tf.concat((self.input_emb,self.seg_input_emb),2)
+        X_=tf.transpose(input_emb,[1,0,2])
         X_= tf.unstack(X_,self.seq_len,0)
         self.crf_mode = crf_mode
         self.lstm_input=X_
@@ -189,6 +204,19 @@ class Bilstm(object):
                 self.trans_params = trans_params  # need to evaluate it for decoding
                 self.loss_op = tf.reduce_mean(-log_likelihood)
                 self.optimizer = tf.train.AdadeltaOptimizer(learning_rate=0.4).minimize(self.loss_op)
+
+            elif self.mode=='cnn_crf':
+                self.cnn_layer(input_emb)
+
+
+    def cnn_layer(self,input_emb):
+        '''
+        cnn层
+        :param input_emb:
+        :return:
+        '''
+        cnn_input=tf.expand_dims(input_emb,3)
+        print(cnn_input)
 
     def loss_entory(self,y,y_):
         '''
@@ -343,14 +371,14 @@ class Bilstm(object):
         saver = tf.train.Saver()
 
         with tf.Session(config=config) as sess:
-            if os.path.exists('./save_model/%s.ckpt.meta'%self.mode):
-                saver.restore(sess,"./save_model/%s.ckpt"%self.mode)
+            if os.path.exists('./save_model_1/%s.ckpt.meta'%self.mode):
+                saver.restore(sess,"./save_model_1/%s.ckpt"%self.mode)
                 _logger.info('Load Model from %s file!'%self.mode)
             else:
                 _logger.info('Initializer model params')
                 sess.run(tf.global_variables_initializer())
 
-            train_sent,train_sent_len,train_label=dd.next_batch()
+            # train_sent,train_sent_len,train_label,train_seg=dd.next_batch()
             # dev_sent,dev_entity,dev_label,dev_loss_weight,dev_seq_vec=dd.get_dev()
             init_train_loss = 999.99
             init_dev_loss = 999.99
@@ -359,13 +387,14 @@ class Bilstm(object):
             for i in range(FLAGS.epoch):
                 for j in range(self.iter_num):
                     _logger.info('This is %s epoch,iter %s'%(i,j))
-                    sent, sent_len, label = dd.next_batch()
+                    sent, sent_len, label,seg = dd.next_batch()
 
                     train_loss, _, logit, trans_params = sess.run(
                         [self.loss_op, self.optimizer, self.logit, self.trans_params], feed_dict={
                             self.X_sent: sent,
                             self.Y: label,
                             self.seq_vec: sent_len,
+                            self.seg_input:seg
                         })
 
                     # dev_loss,dev_logit,dev_trans_params=sess.run([self.loss_op,self.logit,self.trans_params],feed_dict={self.X_sent:dev_sent,
@@ -387,7 +416,7 @@ class Bilstm(object):
                     if train_loss < init_train_loss:
                         _logger.info("save model")
                         init_train_loss = train_loss
-                        saver.save(sess, "./save_model/%s.ckpt"%self.mode)
+                        saver.save(sess, "./save_model_1/%s.ckpt"%self.mode)
                     print('\n')
 
     def _train(self,dd):
@@ -535,10 +564,6 @@ class Bilstm(object):
             return verbit_seq
 
 
-
-
-
-
 if __name__ == '__main__':
     start_time=time.time()
     with tf.device("/cpu:0"):
@@ -553,11 +578,10 @@ if __name__ == '__main__':
                       seq_len=FLAGS.sent_len, seq_dim=FLAGS.embedding_dim,
                       num_class=num_class,
                       mode=FLAGS.model_mode,batch_size=FLAGS.batch_size,crf_mode='train',loss_weight_mode='train',vocab_num=vocab_num
-                          ,embedding_dim=FLAGS.embedding_dim,iter_num=iter_num)
-
+                          ,embedding_dim=FLAGS.embedding_dim,iter_num=iter_num,seg_num=FLAGS.seg_num,seg_embedding_dim=FLAGS.seg_embedding_dim)
         _logger.info("load data finish")
         if FLAGS.mod=='train':
-            nn_model.train(dd)
+            nn_model._train(dd)
         elif FLAGS.mod=='infer':
             while True:
                 sent=input('input:')
