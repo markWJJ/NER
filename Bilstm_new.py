@@ -359,7 +359,7 @@ class Bilstm(object):
             for i in range(FLAGS.epoch):
                 for j in range(self.iter_num):
                     _logger.info('This is %s epoch,iter %s'%(i,j))
-                    sent, sent_len, label = dd.next_batch()
+                    sent, sent_len, label,_ = dd.next_batch()
 
                     train_loss, _, logit, trans_params = sess.run(
                         [self.loss_op, self.optimizer, self.logit, self.trans_params], feed_dict={
@@ -422,7 +422,7 @@ class Bilstm(object):
             init_dev_acc = 0.0
             mm=Merge()
             for _ in range(self.iter_num):
-                sent, sent_len, label = dd.next_batch()
+                sent, sent_len, label,_ = dd.next_batch()
 
                 train_loss, logit, trans_params = sess.run(
                     [self.loss_op, self.logit, self.trans_params], feed_dict={
