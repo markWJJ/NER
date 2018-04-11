@@ -9,6 +9,8 @@ import time
 sys.path.append("./")
 sys.path.append("./data/")
 from data_preprocess_auto_length import Entity_Extration_Data
+from tensorflow.contrib.layers.python.layers import initializers
+
 import data_preprocess
 from util import Eval,Merge
 logging.basicConfig(level=logging.INFO,
@@ -22,7 +24,7 @@ class Config(object):
     '''
     默认配置
     '''
-    learning_rate=0.4
+    learning_rate=0.02
     batch_size=200
     sent_len=80    # 问句长度
     seg_embedding_dim=50
@@ -38,7 +40,7 @@ class Config(object):
     use_cpu_num=8
     keep_dropout=0.7
     summary_write_dir="./tmp/r_net.log"
-    epoch=20
+    epoch=50
     lambda1=0.01
     model_mode='bilstm_attention_crf' #模型选择：bilstm bilstm_crf bilstm_attention bilstm_attention_crf,cnn_crf
 
@@ -88,6 +90,12 @@ class Bilstm(object):
         # self.seg_embedding=tf.Variable(tf.random_uniform(shape=(self.seg_num,seg_embedding_dim),minval=-1.0,maxval=1.0,dtype=tf.float32))
         self.seq_len=tf.placeholder(shape=(1,),dtype=tf.int32)
         self.X_sent=tf.placeholder(shape=(None,None),dtype=tf.int32)
+
+        used = tf.sign(tf.abs(self.X_sent))
+        length = tf.reduce_sum(used, reduction_indices=1)
+        self.seq_vec_1 = tf.cast(length, tf.int32)
+        self.max_len=tf.reduce_max(length)
+
         # self.seg_input=tf.placeholder(shape=(None,self.seq_len),dtype=tf.int32)
 
         self.input_emb=tf.nn.embedding_lookup(self.embedding,self.X_sent)
@@ -201,10 +209,38 @@ class Bilstm(object):
                 logit = tf.add(tf.einsum("ijk,kl->ijl", lstm_out, lstm_w), lstm_b)
                 #label = tf.one_hot(self.Y, self.num_class, 1, 0,2)
 
-                log_likelihood, trans_params = tf.contrib.crf.crf_log_likelihood(
-                    logit, self.Y, self.seq_vec)
-                self.logit=logit
-                self.trans_params = trans_params  # need to evaluate it for decoding
+                # crf model
+                small = -1000.0
+                batch=self.batch_size
+                # pad logits for crf loss
+                start_logits = tf.concat(
+                    [small * tf.ones(shape=[batch, 1, self.num_class]),
+                     tf.zeros(shape=[batch, 1, 1])], axis=-1)
+
+                pad_logits = tf.cast(small * tf.ones([batch, self.max_len, 1]), tf.float32)
+                logits = tf.concat([logit, pad_logits], axis=-1)
+                logits = tf.concat([start_logits, logits], axis=1)
+                targets = tf.concat(
+                    [tf.cast(self.num_class * tf.ones([batch, 1]), tf.int32), self.Y], axis=-1)
+
+                self.trans_params = tf.get_variable(
+                    "transitions",
+                    shape=[self.num_class + 1, self.num_class + 1],
+                    initializer=initializers.xavier_initializer())
+
+                log_likelihood, self.trans_params = tf.contrib.crf.crf_log_likelihood(
+                    inputs=logits,
+                    tag_indices=targets,
+                    transition_params=self.trans_params,
+                    sequence_lengths=self.seq_vec_1 + 1)
+
+                self.logit=logits
+
+
+                # log_likelihood, trans_params = tf.contrib.crf.crf_log_likelihood(
+                #     logit, self.Y, self.seq_vec)
+                # self.logit=logit
+                # self.trans_params = trans_params  # need to evaluate it for decoding
                 self.loss_op = tf.reduce_mean(-log_likelihood)
 
                 # 梯度截断
@@ -446,11 +482,13 @@ class Bilstm(object):
                         print(train_loss)
 
                     else:
+                        print(sent.shape,label.shape)
                         train_loss, _, logit, trans_params = sess.run(
                             [self.loss_op, self.optimizer, self.logit, self.trans_params], feed_dict={
                                 self.X_sent: sent,
                                 self.Y: label,
                                 self.seq_vec: sent_len,
+                                self.seq_len:current_len
                             })
 
                         verbit_seq = self.Verbit(logits=logit, batch_size=sent.shape[0], trans_params=trans_params,
@@ -490,8 +528,8 @@ class Bilstm(object):
         wf=open('./out_1.txt','w')
 
         with tf.Session(config=config) as sess:
-            if os.path.exists('./save_model/%s.ckpt.meta' % self.mode):
-                saver.restore(sess, "./save_model/%s.ckpt" % self.mode)
+            if os.path.exists('./save_model_1/%s.ckpt.meta' % self.mode):
+                saver.restore(sess, "./save_model_1/%s.ckpt" % self.mode)
                 _logger.info('Load Model from %s file!' % self.mode)
             else:
                 _logger.info('Initializer model params')
@@ -505,9 +543,9 @@ class Bilstm(object):
             init_dev_acc = 0.0
             mm=Merge()
             for _ in range(self.iter_num):
-                # sent, sent_len, label,current_len = dd.next_batch()
-                sent, sent_len, label, seg = dd.next_batch()
-                current_len = np.array([80, ], dtype=np.int32)
+                sent, sent_len, label,current_len = dd.next_batch()
+                # sent, sent_len, label, seg = dd.next_batch()
+                # current_len = np.array([80, ], dtype=np.int32)
 
                 train_loss, logit, trans_params = sess.run(
                     [self.loss_op, self.logit, self.trans_params], feed_dict={
