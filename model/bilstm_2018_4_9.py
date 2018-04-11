@@ -9,6 +9,7 @@ import time
 sys.path.append("./")
 sys.path.append("./data/")
 from data_preprocess_auto_length import Entity_Extration_Data
+import data_preprocess
 from util import Eval,Merge
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
@@ -21,7 +22,7 @@ class Config(object):
     '''
     默认配置
     '''
-    learning_rate=0.05
+    learning_rate=0.4
     batch_size=200
     sent_len=80    # 问句长度
     seg_embedding_dim=50
@@ -78,11 +79,13 @@ class Bilstm(object):
         self.iter_num=iter_num
         self.mode=mode
         self.batch_size=batch_size
+        self.global_step = tf.Variable(0, trainable=False)
+
         self.seq_vec=tf.placeholder(shape=(None,),dtype=tf.int32)
         self.loss_weight_mode=loss_weight_mode
         self.embedding_dim=embedding_dim
         self.embedding=tf.Variable(tf.random_uniform(shape=(vocab_num,embedding_dim),minval=-1.0,maxval=1.0,dtype=tf.float32))
-        self.seg_embedding=tf.Variable(tf.random_uniform(shape=(self.seg_num,seg_embedding_dim),minval=-1.0,maxval=1.0,dtype=tf.float32))
+        # self.seg_embedding=tf.Variable(tf.random_uniform(shape=(self.seg_num,seg_embedding_dim),minval=-1.0,maxval=1.0,dtype=tf.float32))
         self.seq_len=tf.placeholder(shape=(1,),dtype=tf.int32)
         self.X_sent=tf.placeholder(shape=(None,None),dtype=tf.int32)
         # self.seg_input=tf.placeholder(shape=(None,self.seq_len),dtype=tf.int32)
@@ -93,10 +96,7 @@ class Bilstm(object):
         self.Y = tf.placeholder(shape=(None,None), dtype=tf.int32)
 
         # input_emb=tf.concat((self.input_emb,self.seg_input_emb),2)
-        # X_=tf.transpose(self.input_emb,[1,0,2])
-        # self.seq_len=self.input_emb.shape[1]
 
-        # X_= tf.unstack(X_,self.seq_len,0)
         # self.crf_mode = crf_mode
         # self.lstm_input=X_
         with tf.device("/cpu:3"):#3
@@ -109,6 +109,10 @@ class Bilstm(object):
                 initializer=tf.random_uniform_initializer(-0.1, 0.1, seed=113),
                 state_is_tuple=False)
 
+            # cell_fw = tf.nn.rnn_cell.MultiRNNCell([cell_fw] * 1, state_is_tuple=False)
+            # cell_bw = tf.nn.rnn_cell.MultiRNNCell([cell_bw] * 1, state_is_tuple=False)
+
+
             lstm_out, final_states = tf.nn.bidirectional_dynamic_rnn(
                 cell_fw,
                 cell_bw,
@@ -116,15 +120,19 @@ class Bilstm(object):
                 dtype=tf.float32,
                 sequence_length=self.seq_vec)
             lstm_out=tf.concat((lstm_out[0],lstm_out[1]),2)
-            # static lstm
-            # (lstm_out, states, _) = tf.contrib.rnn.static_bidirectional_rnn(
-            #     cell_fw, cell_bw, self.lstm_input, dtype=tf.float32,
-            #     sequence_length=self.seq_vec)
 
-        with tf.device("/cpu:4"):#4
+
+            # static lstm
+            # X_=tf.transpose(self.input_emb,[1,0,2])
+            # X_= tf.unstack(X_,80,0)
+            # (lstm_out, states, _) = tf.contrib.rnn.static_bidirectional_rnn(
+            #     cell_fw, cell_bw, X_, dtype=tf.float32,
+            #     sequence_length=self.seq_vec)
             # self.lstm_output=tf.nn.dropout(lstm_out,keep_prob=1.0)
             # lstm_out=tf.stack(self.lstm_output,0)
             # lstm_out=tf.transpose(lstm_out,[1,0,2])#[batch_size,seq_len,2*hidden_dim]
+        with tf.device("/cpu:4"):#4
+
 
             if self.mode == "bilstm":
                 lstm_w = tf.Variable(
@@ -156,8 +164,15 @@ class Bilstm(object):
                 YY = tf.reshape(YY1, (1, -1))
                 lstm_prediction = tf.reshape(self.lstm_prediction, (1, -1))
                 self.loss_op=tf.losses.softmax_cross_entropy(YY1,self.lstm_prediction)
+                self.opt = tf.train.AdadeltaOptimizer(learning_rate=FLAGS.learning_rate)
+                # tidi jieduan
+                grads_vars = self.opt.compute_gradients(self.loss_op)
+                capped_grads_vars = [[tf.clip_by_value(g, -1e-5, 1.0), v]
+                                     for g, v in grads_vars]
+                self.optimizer = self.opt.apply_gradients(capped_grads_vars)
+
                 #self.loss_op=self.loss_entory(YY,lstm_prediction)
-                self.optimizer = tf.train.AdadeltaOptimizer(learning_rate=FLAGS.learning_rate).minimize(self.loss_op)
+                # self.optimizer = tf.train.AdadeltaOptimizer(learning_rate=FLAGS.learning_rate).minimize(self.loss_op)
                 self.loss_summary = tf.summary.scalar("loss", self.loss_op)
 
             elif self.mode == "bilstm_crf":
@@ -191,7 +206,17 @@ class Bilstm(object):
                 self.logit=logit
                 self.trans_params = trans_params  # need to evaluate it for decoding
                 self.loss_op = tf.reduce_mean(-log_likelihood)
-                self.optimizer = tf.train.AdadeltaOptimizer(learning_rate=FLAGS.learning_rate).minimize(self.loss_op)
+
+                # 梯度截断
+                self.opt = tf.train.AdadeltaOptimizer(learning_rate=FLAGS.learning_rate)
+
+                grads_vars = self.opt.compute_gradients(self.loss_op)
+
+                capped_grads_vars = [[tf.clip_by_value(g, -5.0, 5.0), v] for g, v in grads_vars]
+
+                self.optimizer = self.opt.apply_gradients(capped_grads_vars,self.global_step)
+
+                # self.optimizer = tf.train.AdadeltaOptimizer(learning_rate=FLAGS.learning_rate).minimize(self.loss_op)
 
             elif self.mode=="bilstm_self_attention_crf":
                 lstm_w = tf.Variable(
@@ -408,6 +433,8 @@ class Bilstm(object):
                 for j in range(self.iter_num):
                     _logger.info('This is %s epoch,iter %s'%(i,j))
                     sent, sent_len, label,current_len = dd.next_batch()
+                    # sent, sent_len, label, seg=dd.next_batch()
+                    # current_len=np.array([80,],dtype=np.int32)
                     if FLAGS.model_mode in ['bilstm','bilstm_attention']:
                         train_loss, _, logit = sess.run(
                             [self.loss_op, self.optimizer, self.logit], feed_dict={
@@ -436,11 +463,15 @@ class Bilstm(object):
 
                         _logger.info("训练误差:%s,训练准确率:%s,batch_id:%s"%(train_loss, crf_acc_train,current_len[0]))
                         # _logger.info("验证误差,验证准确率",dev_loss,crf_acc_dev)
-                        if train_loss < init_train_loss:
-                            init_train_loss = train_loss
-                saver.save(sess, "./save_model_1/%s.ckpt"%self.mode)
-                _logger.info("save model")
-                print('\n')
+                        # if train_loss < init_train_loss:
+                        #     init_train_loss = train_loss
+                        #     saver.save(sess, "./save_model_1/%s.ckpt"%self.mode)
+                        #     _logger.info("save model")
+                        if crf_acc_train>init_train_acc:
+                            init_train_acc=crf_acc_train
+                            saver.save(sess, "./save_model_1/%s.ckpt" % self.mode)
+                            _logger.info("save model")
+
 
     def _train(self,dd):
         '''
@@ -456,11 +487,11 @@ class Bilstm(object):
         id2word=dd.id2word
         id2label=dd.id2label
 
-        wf=open('./out.txt','w')
+        wf=open('./out_1.txt','w')
 
         with tf.Session(config=config) as sess:
-            if os.path.exists('./save_model_1/%s.ckpt.meta' % self.mode):
-                saver.restore(sess, "./save_model_1/%s.ckpt" % self.mode)
+            if os.path.exists('./save_model/%s.ckpt.meta' % self.mode):
+                saver.restore(sess, "./save_model/%s.ckpt" % self.mode)
                 _logger.info('Load Model from %s file!' % self.mode)
             else:
                 _logger.info('Initializer model params')
@@ -474,7 +505,9 @@ class Bilstm(object):
             init_dev_acc = 0.0
             mm=Merge()
             for _ in range(self.iter_num):
-                sent, sent_len, label,current_len = dd.next_batch()
+                # sent, sent_len, label,current_len = dd.next_batch()
+                sent, sent_len, label, seg = dd.next_batch()
+                current_len = np.array([80, ], dtype=np.int32)
 
                 train_loss, logit, trans_params = sess.run(
                     [self.loss_op, self.logit, self.trans_params], feed_dict={
@@ -593,12 +626,17 @@ if __name__ == '__main__':
     with tf.device("/cpu:0"):
         _logger.info("load data")
         dd = Entity_Extration_Data(train_path="./data1.txt", test_path="./test.txt",
-                            dev_path="./dev.txt", batch_size=FLAGS.batch_size , flag="train")
+                            dev_path="./dev.txt", batch_size=FLAGS.batch_size , flag="train_new")
+
+        # dd = data_preprocess.Entity_Extration_Data(train_path="./data1.txt", test_path="./test.txt",
+        #                            dev_path="./dev.txt", sent_len=80,batch_size=FLAGS.batch_size, flag="train_new")
 
         num_class=len(dd.label_vocab)
         vocab_num=len(dd.vocab)
         id2label=dd.id2label
         iter_num=dd.num_batch
+        # iter_num=int(int(dd.file_size)/int(FLAGS.batch_size))
+
 
         nn_model = Bilstm(hidden_dim=FLAGS.hidden_dim,
                        seq_dim=FLAGS.embedding_dim,
@@ -607,7 +645,7 @@ if __name__ == '__main__':
                           ,embedding_dim=FLAGS.embedding_dim,iter_num=iter_num,seg_num=FLAGS.seg_num,seg_embedding_dim=FLAGS.seg_embedding_dim)
         _logger.info("load data finish")
         if FLAGS.mod=='train':
-            nn_model._train(dd)
+            nn_model.train(dd)
         elif FLAGS.mod=='infer':
             while True:
                 sent=input('input:')
