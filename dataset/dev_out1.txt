@@ -1,0 +1,123 @@
+bos bxcp 赠送 的 高发 肿瘤 基因 检测 或 jb 检测 有 没 限制 谁	o o o o o o o o o o o o o o o	询问增值服务内容
+bos 有 单位 的 公费医疗 按有 社保 人士 投保 还 是非 社保 人士 投保 eos	o o o o o o o o o o o o o o o	询问保险产品
+bos 重疾 绿医 通道 登记 被保险人 但 给 其他人 使用 ， 你们 有 监管 措施	o o o o o o o o o o o o o o o	询问增值服务内容
+bos 线上 和 线下 投保 优惠 有 什么 不同 ， 你们 和 网点 一样 有	o o o o o o o o o o o o o o o	购买某项保险产品有无优惠
+bos 国内 重大疾病 绿色 就医 通道 ， 是不是 客户 罹患 轻症 就 可以 使用 的	o o o o o o o o o o o o o o o	询问增值服务内容
+bos 重疾 绿医 通道 只有 患 重疾 才 可以 使用 吗 ？ eos	o o o o o o o o o o o o o o o	询问增值服务内容
+bos 此前 有过 被 延期 承保 的 算次 标准 体 eos	o o o o o o o o o o o o o o o	other
+bos 赔付 完毕 后 ， 合同 会 终止 吗 eos	o o o o o o o o o o o o o o o	询问合同终止
+bos 有 特别 说明 和 约定 的 情况 吗 eos	o o o o o o o o o o o o o o o	询问特别约定
+bos 重疾 绿医 通道 有 在 居住地 有 fwxm 吗 ？ eos	o o o o o o o o o o o o o o o	询问增值服务内容
+bos 晚上 问 问题 有 时间 限制 吗 eos	o o o o o o o o o o o o o o o	咨询时间
+bos 拨打 寰宇 卡 救援 号码 要 不要 收费 ？ eos	o o o o o o o o o o o o o o o	询问增值服务内容
+bos bxcp 是否 存在 健康 及 职业 加费 情况 ？ eos	o o o o o o o o o o o o o o o	other
+bos 门 ( 急 ) 诊 医疗 eos	o o o o o o o o o o o o o o o	释义项的定义
+bos 在线 问诊 或 健康 测评 的 操作 ？ eos	o o o o o o o o o o o o o o o	询问增值服务内容
+bos bxcp 的 特色 ？ / 亮点 ？ eos	o o o o o o o o o o o o o o o	询问产品优势
+bos 附加 险 能否 到 保险机构 附加 ？ eos	o o o o o o o o o o o o o o o	询问附加险
+bos 投保 后 有 对应 的 售后服务 吗 eos	o o o o o o o o o o o o o o o	服务内容介绍
+bos 重疾 绿医 通道 患 轻症 可以 使用 吗 eos	o o o o o o o o o o o o o o o	询问增值服务内容
+bos 办理 业务 都 需要 提供 保单 原件 吗 eos	o o o o o o o o o o o o o o o	业务办理提交材料
+bos 官方 微信 中 专业 fwxm 服务 时间 是 什么 eos	o o o o o o o o o o o o o o o	询问增值服务内容
+bos 续保 有 等待 期 吗 eos	o o o o o o o o o o o o o o o	询问等待期
+bos 治疗 费用 严重 ⅲ 度 烧伤 eos	o o o o o o o o o o o o o o o	疾病治疗费用
+bos 赔 过重 疾 过后 ， qj 还 能 赔 吗 eos	o o o o o o o o o o o o o o o	疾病种类的定义 某情景是否在承保范围内
+bos 可以 电话 联系 我 么 eos	o o o o o o o o o o o o o o o	other
+bos 海外 就医 安排 服务 是 什么 服务 eos	o o o o o o o o o o o o o o o	询问增值服务内容
+bos 国内 放射科 排名 第一 的 医院 eos	o o o o o o o o o o o o o o o	询问合作医院
+bos 国内 妇产科 排名 第一 的 医院 eos	o o o o o o o o o o o o o o o	询问合作医院
+bos 国内 麻醉科 排名 第一 的 医院 eos	o o o o o o o o o o o o o o o	询问合作医院
+bos bzxm 和 bzxm 共用 保额 吗 eos	o o o o o o o o o o o o o o o	询问保额
+bos b超 检查 项目 有 哪些 ？ eos	o o o o o o o o o o o o o o o	某项体检的包含项
+bos 国内 胸外科 排名 第一 的 医院 eos	o o o o o o o o o o o o o o o	询问合作医院
+bos 什么 情况 下 信托 合同 自动 终止 eos	o o o o o o o o o o o o o o o	合同自动终止的情景
+bos bxcp 非 年缴 保费 的 折算 系数 是 什么 ？ eos	o o o o o o o o o o o o o o o	产品介绍 询问缴费年期 保费核算
+bos 手机 可以 投保 吗 eos	o o o o o o o o o o o o o o o	投保途径
+bos bxcp 的 健康 核保 规则 eos	o o o o o o o o o o o o o o o	投保指引
+bos 国内 老年医学 排名 第一 的 医院 eos	o o o o o o o o o o o o o o o	询问合作医院
+bos 国内 普通外科 排名 第一 的 医院 eos	o o o o o o o o o o o o o o o	询问合作医院
+bos 最高 能 买 多少 eos	o o o o o o o o o o o o o o o	产品保额限制
+bos 疾病 末期 开 证明 eos	o o o o o o o o o o o o o o o	other
+bos bxcp 的 保障 期是 ？ eos	o o o o o o o o o o o o o o o	产品保障期限
+bos bxcp 的 保险 责任 ？ eos	o o o o o o o o o o o o o o o	询问保险责任
+bos 月缴 能 改成 年缴 吗 eos	o o o o o o o o o o o o o o o	询问变更缴费方式
+bos 变更 保险合同 需要 提供 什么 资料 eos	o o o o o o o o o o o o o o o	询问合同变更
+bos bxcp 和 bxcp 有 什么 区别 eos	o o o o o o o o o o o o o o o	保险产品对比
+bos 附加 bxcp 提前 给付 特定 bxzl 提供 哪些 保障 ？ eos	o o o o o o o o o o o o o o o	询问附加险 询问保险金给付
+bos 犹豫期 保费 退保 率 eos	o o o o o o o o o o o o o o o	询问犹豫期
+bos bxcp 的 附加 规则 eos	o o o o o o o o o o o o o o o	投保指引
+bos 这个 保险 保 什么 eos	o o o o o o o o o o o o o o o	询问保险责任
+bos 关于 住院 的 要求 eos	o o o o o o o o o o o o o o o	释义项的定义
+bos 补充 告知 的 规定 eos	o o o o o o o o o o o o o o o	询问如实告知
+bos 更改 个人身份 资料 的 规定 eos	o o o o o o o o o o o o o o o	询问合同变更
+bos 等待 期内 有 大病 可以 投保 吗 eos	o o o o o o o o o o o o o o o	疾病种类的定义 询问等待期
+bos 中信保诚 改名 了 ？ eos	o o o o o o o o o o o o o o o	询问公司介绍
+bos 可以 为 自己 兄弟姐妹 投保 吗 eos	o o o o o o o o o o o o o o o	投保人和被保险人关系
+bos 在线 问诊 健康 评测 内容 eos	o o o o o o o o o o o o o o o	询问增值服务内容
+bos bxcp 变更 合同 ？ eos	o o o o o o o o o o o o o o o	询问合同变更
+bos bxcp 投保 规则 ？ eos	o o o o o o o o o o o o o o o	询问投保规则
+bos 线上 和 线下 投保 优惠 区别 eos	o o o o o o o o o o o o o o o	购买某项保险产品有无优惠
+bos 开门红 期间 重大疾病 绿色 就医 通道 eos	o o o o o o o o o o o o o o o	询问增值服务内容
+bos 保费 测算 eos	o o o o o o o o o o o o o o o	保费核算
+bos 医院 要求 eos	o o o o o o o o o o o o o o o	理赔医院
+bos 免 赔额 多少 eos	o o o o o o o o o o o o o o o	询问免赔额数值
+bos bxcp jb ？ eos	o o o o o o o o o o o o o o o	疾病的定义
+bos 续期 缴费 规则 eos	o o o o o o o o o o o o o o o	询问缴费方式
+bos 浙江 合作 医院 eos	o o o o o o o o o o o o o o o	询问合作医院
+bos 内蒙 合作 医院 eos	o o o o o o o o o o o o o o o	询问合作医院
+bos 贵州 合作 医院 eos	o o o o o o o o o o o o o o o	询问合作医院
+bos 西藏 合作 医院 eos	o o o o o o o o o o o o o o o	询问合作医院
+bos 广西 合作 医院 eos	o o o o o o o o o o o o o o o	询问合作医院
+bos jb 检测 的 供应商 eos	o o o o o o o o o o o o o o o	询问增值服务内容
+bos 电话 医生 使用 期限 eos	o o o o o o o o o o o o o o o	询问增值服务内容
+bos 险种 关联 选择 申请 资料 eos	o o o o o o o o o o o o o o o	险种关联选择申请资料
+bos 轻症 和 重疾 的 标准 是 什么 eos	o o o o o o o o o o o o o o o	区分疾病种类的标准
+bos 重疾 体检 中 一般 体检 包含 什么 eos	o o o o o o o o o o o o o o o	询问体检或验尸
+bos 保障 年限 eos	o o o o o o o o o o o o o o o	询问保险期间
+bos 减额 缴清 eos	o o o o o o o o o o o o o o o	询问减额缴清
+bos 免 赔额 eos	o o o o o o o o o o o o o o o	询问免赔额定义
+bos 纸质 合同 eos	o o o o o o o o o o o o o o o	申请纸质合同
+bos 办理 保单回溯 eos	o o o o o o o o o o o o o o o	保单回溯
+bos bxcp 保额 限制 eos	o o o o o o o o o o o o o o o	产品保额限制
+bos 被保险人 年龄 范围 eos	o o o o o o o o o o o o o o o	询问投保年龄
+bos 什么 是 重大疾病 eos	o o o o o o o o o o o o o o o	疾病种类的定义
+bos bxcp qj 、 qj ？ eos	o o o o o o o o o o o o o o o	释义项的定义
+bos 国外 理赔 eos	o o o o o o o o o o o o o o o	理赔的地域限制
+bos sy eos	o o o o o o o o o o o o o o o	释义项的定义
+bos sy eos	o o o o o o o o o o o o o o o	释义项的定义
+bos 检测 机构 eos	o o o o o o o o o o o o o o o	询问增值服务内容
+bos bxcp 优势 eos	o o o o o o o o o o o o o o o	询问产品优势
+bos 增值 服务 eos	o o o o o o o o o o o o o o o	询问增值服务种类
+bos qj 赔付 吗 eos	o o o o o o o o o o o o o o o	某情景是否在承保范围内
+bos 复 效期 滞纳金 eos	o o o o o o o o o o o o o o o	复效期有无收取滞纳金
+bos bxcp 重疾 eos	o o o o o o o o o o o o o o o	疾病种类的定义
+bos bxcp 已缴费年期数 ？ eos	o o o o o o o o o o o o o o o	询问缴费年期
+bos bzxm 理赔 资料 eos	o o o o o o o o o o o o o o o	保障项目的理赔方式
+bos 客服热线 eos	o o o o o o o o o o o o o o o	询问联系方式
+bos 关于 癌症靶向疗法 eos	o o o o o o o o o o o o o o o	释义项的定义
+bos jb 投保 eos	o o o o o o o o o o o o o o o	患某疾病是否可以投保
+bos 湖北 分公司 联系方式 eos	o o o o o o o o o o o o o o o	询问分公司联系方式
+bos 河北 分公司 联系方式 eos	o o o o o o o o o o o o o o o	询问分公司联系方式
+bos 天津 分公司 联系方式 eos	o o o o o o o o o o o o o o o	询问分公司联系方式
+bos 给付 型 保险 eos	o o o o o o o o o o o o o o o	保险类型判断
+bos 中信银行 手机 投保 流程 eos	o o o o o o o o o o o o o o o	中信银行 某渠道的投保流程
+bos bxj eos	o o o o o o o o o o o o o o o	某种情景是否可以投保
+bos insurance agent eos	o o o o o o o o o o o o o o o	other
+bos 乳腺基因检测 的 意义 eos	o o o o o o o o o o o o o o o	询问增值服务内容
+bos 轻症 赔付 eos	o o o o o o o o o o o o o o o	疾病种类的赔付流程
+bos 轻症 种类 eos	o o o o o o o o o o o o o o o	疾病种类的定义 疾病种类包含哪些疾病
+bos bxzl 的 生存期 eos	o o o o o o o o o o o o o o o	询问疾病种类的生存期
+bos jb 保不保 eos	o o o o o o o o o o o o o o o	患某疾病是否可以投保 某种疾病是否在承保范围内
+bos 如何 申领 bxcp bzxm ？ eos	o o o o o o o o o o o o o o o	保障项目如何申请理赔
+BOS bxcp 升级 能 附加 住院 bxzl 吗 EOS	O O O O O O O O O	询问附加险 产品升级介绍
+BOS bxcp 的 保险 责任 是 什么 EOS	O O O O O O O O	询问保险责任
+BOS bxcp 有 多少 天 的 犹豫期 呢 EOS	O O O O O O O O O	询问犹豫期
+BOS bxcp 最低 保额 EOS	O O O O O	某产品的最低保额
+BOS bzxm 的 免 赔 天数 是 多少 EOS	O O O O O O O O O	Other
+BOS bxcp 的 保障 期 EOS	O O O O O O	产品保障期限
+BOS bxcp 身体检查 与 验尸 EOS	O O O O O O	询问体检或验尸
+BOS bxcp 的 未归还款项 及 利息 的 偿还 EOS	O O O O O O O O O	询问未归还款项偿还
+BOS bzxm 和 bzxm 共用 保额 吗 EOS	O O O O O O O O	询问保额
+BOS bxcp 增值 服务 EOS	O O O O O	询问增值服务种类
+BOS 你好 啊 EOS	O O O O	Other
+BOS 保单 借款 EOS	O O O O	询问保单借款
