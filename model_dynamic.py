@@ -7,9 +7,13 @@ import tensorflow as tf
 import logging
 from logging.config import fileConfig
 from pre_data_deal.data_deal import Intent_Data_Deal
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import classification_report,precision_recall_fscore_support
 import time
 from data_preprocess import Intent_Slot_Data
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+import xlrd
+import xlwt
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 sys.path.append("./")
 sys.path.append("./data/")
 
@@ -21,7 +25,7 @@ logging.basicConfig(level=logging.INFO,
 _logger = logging.getLogger("intent_bagging")
 
 
-class Config(object):
+class Config_lstm(object):
     '''
     默认配置
     '''
@@ -45,7 +49,7 @@ class Config(object):
     model_mode = 'bilstm_attention_crf'  # 模型选择：bilstm bilstm_crf bilstm_attention bilstm_attention_crf,cnn_crf
 
 
-config = Config()
+config = Config_lstm()
 tf.app.flags.DEFINE_float("lambda1", config.lambda1, "l2学习率")
 tf.app.flags.DEFINE_float("learning_rate", config.learning_rate, "学习率")
 tf.app.flags.DEFINE_float("keep_dropout", config.keep_dropout, "dropout")
@@ -61,7 +65,7 @@ tf.app.flags.DEFINE_string("dev_dir", config.dev_dir, "验证数据文件路径"
 tf.app.flags.DEFINE_string("test_dir", config.test_dir, "测试数据文件路径")
 tf.app.flags.DEFINE_string("model_dir", config.model_dir, "模型保存路径")
 tf.app.flags.DEFINE_boolean('use Encoder2Decoder',False,'')
-tf.app.flags.DEFINE_string("mod", "train", "默认为训练")  # true for prediction
+tf.app.flags.DEFINE_string("mod", "server", "默认为训练")  # true for prediction
 tf.app.flags.DEFINE_string('model_mode', config.model_mode, '模型类型')
 tf.app.flags.DEFINE_boolean('use_auto_buckets',config.use_auto_buckets,'是否使用自动桶')
 tf.app.flags.DEFINE_string('only_mode','intent','执行哪种单一任务')
@@ -89,7 +93,7 @@ class Model(object):
             self.encoder_outs,self.encoder_final_states=self.encoder()
 
             if FLAGS.only_mode=='intent':
-
+                self.cnn_out=self.cnn_encoder()
                 self.intent_losses=self.intent_loss()
                 self.loss_op=self.intent_losses
             elif FLAGS.only_mode=='slot':
@@ -131,6 +135,8 @@ class Model(object):
 
         # self.global_step = tf.Variable(0, trainable=True)
 
+        self.length_embedding=tf.Variable(tf.random_normal(shape=(self.max_len+1,50)),trainable=False)
+
         self.sent_embedding=tf.Variable(tf.random_normal(shape=(self.vocab_num,self.embedding_dim),
                                                          dtype=tf.float32),trainable=False)
         self.slot_embedding=tf.Variable(tf.random_normal(shape=(self.slot_num_class,self.embedding_dim),
@@ -138,14 +144,15 @@ class Model(object):
 
         self.sent_emb=tf.nn.embedding_lookup(self.sent_embedding,self.sent)
         self.slot_emb=tf.nn.embedding_lookup(self.slot_embedding,self.slot)
+        self.len_emb=tf.nn.embedding_lookup(self.length_embedding,self.seq_vec)
         if FLAGS.mod=='train':
-            self.sent_emb=tf.nn.dropout(self.sent_emb,0.9)
+            self.sent_emb=tf.nn.dropout(self.sent_emb,0.85)
 
         self.lstm_fw=tf.contrib.rnn.LSTMCell(self.hidden_dim)
         self.lstm_bw=tf.contrib.rnn.LSTMCell(self.hidden_dim)
         if FLAGS.mod=='train':
-            self.lstm_fw = tf.nn.rnn_cell.DropoutWrapper(self.lstm_fw, output_keep_prob=0.9)
-            self.lstm_bw = tf.nn.rnn_cell.DropoutWrapper(self.lstm_bw, output_keep_prob=0.9)
+            self.lstm_fw = tf.nn.rnn_cell.DropoutWrapper(self.lstm_fw, output_keep_prob=0.85)
+            self.lstm_bw = tf.nn.rnn_cell.DropoutWrapper(self.lstm_bw, output_keep_prob=0.85)
 
 
 
@@ -175,6 +182,34 @@ class Model(object):
         )
         return lstm_outs,encoder_final_state
 
+    def cnn_encoder(self):
+        '''
+        cnn编码
+        :return:
+        '''
+        input_emb=tf.expand_dims(self.sent_emb,3)
+        filter=[4,6,9,12]
+        res=[]
+        for index,ele in enumerate(filter):
+            with tf.name_scope("conv-maxpool-%s" % index):
+                filter_w_1 = tf.Variable(tf.truncated_normal(shape=(ele,self.embedding_dim,1,200), stddev=0.1), name="W")
+                filter_b_1 = tf.Variable(tf.constant(0.1, shape=[200]), name="b")
+
+
+                cnn_out1=tf.nn.conv2d(input_emb,filter_w_1,strides=[1,1,1,1],padding='VALID') #
+                cnn_out1=tf.nn.relu(tf.nn.bias_add(cnn_out1,filter_b_1))
+                cnn_out1=tf.nn.max_pool(cnn_out1,ksize=[1,self.max_len-ele+1,1,1],strides=[1,2,1,1],padding='VALID')
+
+
+                res.append(cnn_out1)
+        ress=tf.concat(res,3)
+        cnn_out=tf.reshape(ress,[-1,800])
+        cnn_out=tf.nn.dropout(cnn_out,0.7)
+        # sent_attention=self.intent_attention(self.sent_emb)
+        # cnn_out=tf.concat((cnn_out,sent_attention),1)
+        return cnn_out
+
+
     def intent_attention(self, lstm_outs):
         '''
         输入lstm的输出组，进行attention处理
@@ -201,6 +236,36 @@ class Model(object):
 
         outs = tf.concat((logit_, lstm_outs), 2)  # outs.shape=[None,seq_len,4*hidden_dim]
         return outs
+
+    def intent_attention_1(self, lstm_outs):
+        '''
+        输入lstm的输出组，进行attention处理
+        :param lstm_outs:
+        :return:
+        '''
+
+        '''
+        w_h=tf.Variable(tf.random_normal(shape=(2*self.hidden_dim,self.seq_len)))
+        b_h=tf.Variable(tf.random_normal(shape=(self.seq_len,)))
+        logit=tf.einsum("ijk,kl->ijl",lstm_outs,w_h)
+        G=tf.nn.softmax(tf.nn.tanh(tf.add(logit,b_h)))#G.shape=[self.seq_len,self.seq_len]
+        logit_=tf.einsum("ijk,ikl->ijl",G,lstm_outs)
+        '''
+        w_h = tf.Variable(tf.random_normal(shape=(2*self.hidden_dim, 2*self.hidden_dim)))
+        b_h = tf.Variable(tf.random_normal(shape=(2*self.hidden_dim,)))
+        v_h = tf.Variable(tf.random_normal(shape=(2*self.hidden_dim,1)))
+        logit = tf.einsum("ijk,kl->ijl", lstm_outs, w_h)
+        logit = tf.nn.tanh(tf.add(logit, b_h))
+        logit =tf.einsum('ijk,kl->ijl',logit,v_h)
+        logit=tf.reshape(logit,shape=(-1,self.max_len))
+        G = tf.nn.softmax(logit,1)  # G.shape=[self.seq_len,self.seq_len]
+        # logit = tf.tanh(tf.einsum("ijk,ilk->ijl", logit, lstm_outs))
+        logit_ = tf.einsum("ikj,ik->ij", lstm_outs,G)
+        logit_=tf.reshape(logit_,[-1,2*self.hidden_dim])
+        s=tf.transpose(lstm_outs,[1,0,2])[0]
+        outs = tf.concat((logit_, s), 1)
+        return outs
+
 
     def self_lstm_attention_ops(self,lstm_out_t,lstm_outs):
         '''
@@ -332,8 +397,28 @@ class Model(object):
             lstm_w = tf.Variable(tf.random_normal(shape=(4 * self.hidden_dim, self.intent_num_class), dtype=tf.float32))
             tf.add_to_collection('l2',tf.contrib.layers.l2_regularizer(0.01)(lstm_w))
             lstm_b = tf.Variable(tf.random_normal(shape=(self.intent_num_class,), dtype=tf.float32))
-            lstm_out=self.intent_attention(self.encoder_outs)
-            lstm_out=tf.transpose(lstm_out,[1,0,2])[0]
+            lstm_out=self.intent_attention_1(self.encoder_outs)
+            # lstm_out=tf.transpose(lstm_out,[1,0,2])[0]
+            logit = tf.add(tf.matmul(lstm_out, lstm_w), lstm_b)
+            self.soft_logit=tf.nn.softmax(logit,1)
+            # intent_one_hot = tf.one_hot(self.intent, self.intent_num_class, 1, 0)
+            # intent_loss = tf.losses.softmax_cross_entropy(intent_one_hot, logit)
+            l2_loss=tf.get_collection('l2')
+            intent_loss=tf.losses.softmax_cross_entropy(self.intent,logit,reduction=tf.losses.Reduction.NONE)
+            intent_loss=intent_loss
+            # intent_loss=tf.reduce_mean(intent_loss)
+            # mask=tf.sequence_mask(self.seq_vec,self.intent_num_class)
+            # intent_loss=tf.boolean_mask(loss,mask)
+            intent_loss=tf.reduce_mean(intent_loss)
+            return intent_loss+l2_loss
+
+        elif intent_mod=='origin_attention_cnn':
+            lstm_w = tf.Variable(tf.random_normal(shape=(4 * self.hidden_dim+800, self.intent_num_class), dtype=tf.float32))
+            tf.add_to_collection('l2',tf.contrib.layers.l2_regularizer(0.01)(lstm_w))
+            lstm_b = tf.Variable(tf.random_normal(shape=(self.intent_num_class,), dtype=tf.float32))
+            lstm_out=self.intent_attention_1(self.encoder_outs)
+            # lstm_out=tf.transpose(lstm_out,[1,0,2])[0]
+            lstm_out=tf.concat((lstm_out,self.cnn_out),1)
             logit = tf.add(tf.matmul(lstm_out, lstm_w), lstm_b)
             self.soft_logit=tf.nn.softmax(logit,1)
             # intent_one_hot = tf.one_hot(self.intent, self.intent_num_class, 1, 0)
@@ -567,6 +652,7 @@ class Model(object):
         saver=tf.train.Saver()
         init_dev_loss=999.99
         init_train_loss=999.99
+        init_dev_acc=0.0
         num_batch=dd.num_batch
         id2sent=dd.id2sent
         id2intent=dd.id2intent
@@ -580,8 +666,8 @@ class Model(object):
             train_sent,train_slot,train_intent,train_rel_len=dd.get_train()
             for j in range(FLAGS.epoch):
                 _logger.info('第%s次epoch'%j)
+                start_time = time.time()
                 for i in range(num_batch):
-                    start_time=time.time()
                     sent,slot,intent,rel_len,cur_len=dd.next_batch()
 
                     if FLAGS.only_mode=='intent':
@@ -591,16 +677,7 @@ class Model(object):
                                                                                              self.seq_vec: rel_len,
                                                                                              self.rel_num: cur_len,
                                                                                              })
-                        # intent_train_acc=self.intent_acc(softmax_logit,intent)
-                        # _logger.info('index:%s'%i)
-                        # _logger.info('intent_train_loss:%s intent_train_acc:%s ' % (intent_loss,intent_train_acc))
-                        #
-                        # _logger.info('intent_dev_loss:%s intent_dev_acc:%s' %(dev_loss,dev_intent_acc))
-                        # if dev_loss < init_dev_loss:
-                        #     init_dev_loss = dev_loss
-                        #     saver.save(sess, './save_model/model_dynamic.ckpt')
-                        #     _logger.info('save model')
-                        # _logger.info('\n')
+
 
                     elif FLAGS.only_mode=='slot':
 
@@ -668,8 +745,9 @@ class Model(object):
                     _logger.info('train_intent_loss:%s train_intent_acc:%s'%(train_loss,train_intent_acc))
                     _logger.info('dev_intent_loss:%s dev_intent_acc:%s'%(dev_loss,dev_intent_acc))
 
-                    if dev_loss<init_dev_loss:
+                    if dev_loss<init_dev_loss and dev_intent_acc>init_dev_acc:
                         init_dev_loss=dev_loss
+                        init_dev_acc=dev_intent_acc
                         self.intent_write(dev_softmax_logit, dev_intent, dev_sent, dev_slot, id2sent, id2intent,
                                           id2slot, 'dev_out')
                         self.intent_write(train_softmax_logit, train_intent, train_sent, train_slot, id2sent, id2intent,
@@ -677,31 +755,108 @@ class Model(object):
                         saver.save(sess,'./save_model/intent_model.ckpt')
                         _logger.info('save model')
 
-                # dev_intent_loss, dev_slot_loss, dev_intent_logit, dev_slot_logit,tran_param = sess.run(
-                #     [self.intent_losses, self.slot_loss, self.intent_soft_logit, self.soft_logit_crf,self.trans_params],
-                #     feed_dict={self.sent: dev_sent,
-                #                self.slot: dev_slot,
-                #                self.intent: dev_intent,
-                #                self.seq_vec: dev_rel_len,
-                #                })
-                #
-                # # dev_slot_acc = self.slot_acc(dev_slot_logit, dev_slot)
-                # intent_dev_acc = self.intent_acc(dev_intent_logit, dev_intent)
-                # verbit_seq_dev = self.Verbit(dev_slot_logit, None, tran_param, dev_rel_len)
-                # crf_acc_dev = self.crf_acc(verbit_seq_dev, dev_slot, dev_rel_len)
-                # _logger.info('intent_dev_loss:%s intent_dev_acc:%s slot_loss:%s slot_acc:%s' % (
-                # dev_intent_loss, intent_dev_acc, dev_slot_loss, crf_acc_dev))
-
-                # dev_loss = dev_slot_loss + dev_intent_loss
-                # if dev_loss < init_dev_loss:
-                #     init_dev_loss = dev_loss
-                #     saver.save(sess, './save_model/model_dynamic.ckpt')
-                #     _logger.info('save model')
-
-
                 endtime=time.time()
                 print('time:%s'%(endtime-start_time))
                 _logger.info('\n')
+
+
+    def matirx(self,pre_label,label,id2intent,file_name):
+
+        pre_label=np.argmax(pre_label,1)
+        label=np.argmax(label,1)
+
+        pre_label=pre_label.flatten()
+        label=label.flatten()
+
+        labels = list(set(label))
+
+
+        target_names=[id2intent[e] for e in labels]
+
+
+        conf_mat = confusion_matrix(label, pre_label, labels=labels)
+
+        rb1 = xlwt.Workbook()
+        sheet = rb1.add_sheet(u'sheet1', cell_overwrite_ok=True)
+
+        for i in range(1,len(labels)+1):
+            sheet.write(i,0,id2intent[int(labels[i-1])])
+            sheet.write(0,i,id2intent[int(labels[i-1])])
+        for i in range(1,conf_mat.shape[0]+1):
+            ii=1
+            for j in range(1,conf_mat.shape[1]+1):
+                if conf_mat[i-1,j-1]!=0:
+                    sheet.write(i,ii,id2intent[labels[j-1]]+str(conf_mat[i-1,j-1]))
+                    ii+=1
+        rb1.save('confusion_%s' % file_name)
+
+
+
+
+
+        # print(conf_mat)
+        class_re=classification_report(label,pre_label,target_names=target_names)
+        fw=open(file_name,'w')
+        fw.write(class_re)
+        print(class_re)
+        p, r, f1, s = precision_recall_fscore_support(label, pre_label,
+                                                      labels=labels,
+                                                      average=None,
+                                                      sample_weight=None)
+
+        rb = xlwt.Workbook()
+        sheet = rb.add_sheet(u'sheet1', cell_overwrite_ok=True)
+        index=1
+        for name,p_,f_,f1_,s_ in zip(target_names,p,r,f1,s):
+            sheet.write(index, 1, name)
+            sheet.write(index, 2, p_)
+            sheet.write(index, 3, f_)
+            sheet.write(index, 4, f1_)
+            sheet.write(index, 5, int(s_))
+
+            index+=1
+        rb.save('%s'%file_name)
+
+
+        # for name,p_,f_,f1_,s_ in zip(target_names,p,r,f1,s):
+        #     print(name,p_,f_,f1_,s_)
+
+
+    def infer_dev(self,dd):
+
+        config = tf.ConfigProto(device_count={"CPU": FLAGS.use_cpu_num},  # limit to num_cpu_core CPU usage
+                                inter_op_parallelism_threads=8,
+                                intra_op_parallelism_threads=8,
+                                log_device_placement=False,
+                                allow_soft_placement=True,
+                                )
+        id2intent=dd.id2intent
+        saver=tf.train.Saver()
+        with tf.Session(config=config) as sess:
+            if os.path.exists('./save_model/intent_model.ckpt.meta'):
+                saver.restore(sess,'./save_model/intent_model.ckpt')
+            else:
+                sess.run(tf.global_variables_initializer())
+            dev_sent,dev_slot,dev_intent,dev_rel_len=dd.get_dev()
+            train_sent,train_slot,train_intent,train_rel_len=dd.get_train()
+
+
+            dev_softmax_logit, dev_loss = sess.run([self.soft_logit, self.loss_op], feed_dict={self.sent: dev_sent,
+                                                                                               self.slot: dev_slot,
+                                                                                               self.intent: dev_intent,
+                                                                                               self.seq_vec: dev_rel_len,
+                                                                                               })
+
+            self.matirx(dev_softmax_logit,dev_intent,id2intent,'dev.xlsx')
+            print('\n\n')
+
+            train_softmax_logit, train_loss = sess.run([self.soft_logit, self.loss_op],
+                                                       feed_dict={self.sent: train_sent,
+                                                                  self.slot: train_slot,
+                                                                  self.intent: train_intent,
+                                                                  self.seq_vec: train_rel_len,
+                                                                  })
+            self.matirx(train_softmax_logit,train_intent,id2intent,'train.xlsx')
 
     def infer(self,dd,sent):
         '''
@@ -727,7 +882,6 @@ class Model(object):
             intent_logit=sess.run(self.soft_logit,feed_dict={self.sent:sent_arr,
                                                 self.seq_vec:sent_vec})
 
-            # print(intent_logit)
             res=[]
             for ele in intent_logit:
                 ss=[[id2intent[index],str(e)] for index,e in enumerate(ele) if e>=0.3]
@@ -735,7 +889,6 @@ class Model(object):
                     ss=[[id2intent[np.argmax(ele)],str(np.max(ele))]]
                 res.append(ss)
             return res
-
 
     def intent_write(self,pre,label,sent,slot,id2sent,id2intent,id2slot,file_name):
         '''
@@ -853,30 +1006,32 @@ def main(_):
 
         elif FLAGS.mod == 'infer':
             idd = Intent_Data_Deal()
-            while True:
-                sent = input('输入')
-                sent = idd.deal_sent(sent)
-                print(sent)
-                res = nn_model.infer(dd, [sent])
-                print(res)
+            nn_model.infer_dev(dd)
+            # while True:
+            #     sent = input('输入')
+            #     sent = idd.deal_sent(sent)
+            #     print(sent)
+            #     res = nn_model.infer(dd, [sent])
+            #     print(res)
 
         elif FLAGS.mod=='server':
             idd = Intent_Data_Deal()
             def intent(sent_list):
                 sents=[]
-                _logger.info("%s"%sent_list)
+                # _logger.info("%s"%sent_list)
                 for sent in sent_list:
-                    sent=idd.deal_sent(sent)
+                    # sent=idd.deal_sent(sent)
                     sents.append(sent)
                 all_res = nn_model.infer(dd, sents)
                 _logger.info('process end')
                 re_dict = {}
 
-                for sent, res in zip(sent_list, all_res):
-                    re_dict[sent] = res
-                return re_dict
+                # for sent, res in zip(sent_list, all_res):
+                #
+                #     re_dict[sent] = res
+                return all_res
 
-            svr = SimpleXMLRPCServer(('192.168.0.144', 8083), allow_none=True)
+            svr = SimpleXMLRPCServer(('192.168.0.144', 8084), allow_none=True)
             svr.register_function(intent)
             svr.serve_forever()
 

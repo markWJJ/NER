@@ -8,8 +8,11 @@ fw_train=open('./train_out_char.txt','w')
 ss=[]
 for line in open('./intent_data_char_all.txt','r').readlines():
     line=line.replace('\n','')
-    lines=line.split('\t')
-    label=lines[2].strip()
+    try:
+        lines=line.split('\t')
+        label=lines[2].strip()
+    except:
+        print(line)
     ss.append(line)
 ss=list(set(ss))
 index=list(range(len(ss)))

@@ -79,7 +79,7 @@ class Intent_Data_Deal(object):
                     ss.append('fwxm')
                 else:
                     ss.append(e)
-        sent=' '.join(ss)
+        sent=''.join(ss)
 
         return sent
 
@@ -92,14 +92,19 @@ class Intent_Data_Deal(object):
         '''
         pattern = '\d{1,3}(\\.|，|、|？)'
         line = line.replace('\n', '').strip()
-        print([line])
+        sent=''
+        ll=''
+        line=line.replace('\t\t','\t').replace('Other','other')
         if '\t' in line:
 
             ll=str(line).split('\t')[1]
             sent=str(line).split('\t')[0]
         else:
-            ll=str(line).split(' ')[1]
-            sent=str(line).split(' ')[0]
+            try:
+                ll=str(line).split(' ')[1]
+                sent=str(line).split(' ')[0]
+            except:
+                print([line])
 
         sent = re.subn(pattern, '', sent)[0]
         ss = []
@@ -161,11 +166,27 @@ class Intent_Data_Deal(object):
         :return:
         '''
         fw=open(out_file_name,'w')
-
+        num_dict={}
         for ele in open(input_file_name,'r').readlines():
             e=self.deal_sent_file(ele)
+
             fw.write(e)
             fw.write('\n')
+            label=e.replace('\n','').split('\t')[2]
+            labels=label.split(' ')
+            for ee in labels:
+                ee=ee.lower()
+                if ee not in num_dict:
+                    num_dict[ee]=1
+                else:
+                    s=num_dict[ee]
+                    s+=1
+                    num_dict[ee]=s
+
+        ss=[[k,v] for k,v in num_dict.items()]
+
+        ss.sort(key=lambda x:x[1],reverse=True)
+        print(ss)
 
 
 

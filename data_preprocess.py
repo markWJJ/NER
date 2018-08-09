@@ -7,6 +7,7 @@ import logging
 import random
 import jieba
 import re
+import gc
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
                     datefmt='%a, %d %b %Y %H:%M:%S',
@@ -30,6 +31,7 @@ class Intent_Slot_Data(object):
         self.batch_size = batch_size  # batch大小
         self.max_length = max_length
         self.use_auto_bucket=use_auto_bucket
+        self.bucket_len=[0,5,15,30]
         self.index=0
         if flag == "train_new":
             self.vocab, self.slot_vocab, self.intent_vocab = self.get_vocab()
@@ -89,7 +91,6 @@ class Intent_Slot_Data(object):
             for ele in file:
                 ele = ele.replace("\n", "")
                 eles=ele.split(self.split_token)
-                # try:
                 words=eles[0].split(' ')
                 slots=eles[1].split(' ')
 
@@ -164,12 +165,21 @@ class Intent_Slot_Data(object):
         :param sent_list:
         :return:
         '''
-        words = [str(sent).replace('\n', '').split(self.split_token)[0] for sent in sent_list]
-        # slot_labels = [' '.join(str(sent).replace('\n', '').split('\t')[1].split(' ')[:-1]) for sent in sent_list]
-        # intent_labels=[str(sent).replace('\n', '').split('\t')[1].split(' ')[-1] for sent in sent_list]
-        slot_labels = [' '.join([sent.replace('\n','').split(self.split_token)[1].split(' ')[:-1]])   for sent in sent_list]
-        intent_labels = [' '.join([sent.replace('\n','').split(self.split_token)[1].split(' ')[-1]]) for sent in sent_list]
-        max_len = max([len(ele.split(' ')) for ele in words])
+        words, slot_labels, intent_labels, loss_weights = [], [], [], []
+        for sent in sent_list:
+            sent = sent.replace('\n', '')
+            sents = sent.split(self.split_token)
+            words.append(sents[0].split(' '))
+            slot_labels.append(sents[1].split(' '))
+            intent_labels.append(sents[2].split(' '))
+
+        max_len = max([len(e) for e in words])
+        for min_l,max_l in zip(self.bucket_len[:-1],self.bucket_len[1:]):
+            print(max_l)
+            if max_len>min_l and max_len<=max_len:
+                max_len=max_l
+
+        # self.bucket_len.append(max_len)
         word_arr = []
         slot_arr = []
         intent_arr = []
@@ -177,8 +187,8 @@ class Intent_Slot_Data(object):
         for sent, slot,intent in zip(words, slot_labels,intent_labels):
 
             sent_list = []
-            real_len = len(sent.split(' '))
-            for word in sent.split(' '):
+            real_len = len(sent)
+            for word in sent:
                 word = word.lower()
                 if word in self.vocab and word!='':
                     sent_list.append(self.vocab[word])
@@ -186,7 +196,7 @@ class Intent_Slot_Data(object):
                     sent_list.append(0)
 
             slot_list = []
-            slots = slot.split(' ')
+            slots = slot
             for ll in slots:
                 ll=str(ll.lower().replace('[','')).replace("'",'').replace("'",'').replace(',','')
                 if ll in self.slot_vocab:
@@ -195,23 +205,28 @@ class Intent_Slot_Data(object):
                     slot_list.append(self.slot_vocab['O'.lower()])
 
             intent_list=[]
-            intents=intent.split(' ')
-            for ll in intents:
+            for ll in intent:
                 ll=ll.lower()
                 if ll in self.intent_vocab:
                     intent_list.append(self.intent_vocab[ll])
                 else:
                     intent_list.append(0)
 
+            intent_normal = [0] * self.intent_num
+            for e in intent_list:
+                try:
+                    intent_normal[e] = 1
+                except:
+                    print(e)
 
-            if len(sent_list) >= max_len:
+            if len(sent_list) > max_len:
                 new_sent_list = sent_list[0:max_len]
             else:
                 new_sent_list = sent_list
                 ss = [0] * (max_len - len(sent_list))
                 new_sent_list.extend(ss)
 
-            if len(slot_list) >= max_len:
+            if len(slot_list) > max_len:
                 new_slot_list = slot_list[0:max_len]
             else:
                 new_slot_list = slot_list
@@ -224,15 +239,134 @@ class Intent_Slot_Data(object):
             real_len_arr.append(real_len)
             word_arr.append(new_sent_list)
             slot_arr.append(new_slot_list)
-            intent_arr.append(intent_list)
+            intent_arr.append(intent_normal)
 
         real_len_arr = np.array(real_len_arr)
         word_arr = np.array(word_arr)
         slot_arr=np.array(slot_arr)
         intent_arr = np.array(intent_arr)
-        intent_arr=np.reshape(intent_arr,(intent_arr.shape[0]))
 
         return word_arr, slot_arr, intent_arr, real_len_arr
+
+
+    def padd_sentences_infer(self, sent_list):
+        '''
+        find the max length from sent_list , and standardation
+        infer的动态数据构建
+        :param sent_list:
+        :return:
+        '''
+        self.bucket_len.append(0)
+        bucket_len=list(set(self.bucket_len))
+        words, slot_labels, intent_labels, loss_weights = [], [], [], []
+        ss=[[ele,len(ele.split(self.split_token)[0].split(' '))] for ele in sent_list]
+        ss.sort(key=lambda x:x[1])
+        data_list=[]
+        for min_l,max_l in zip(bucket_len[:-1],bucket_len[1:]):
+            dd=[]
+            for ele in ss:
+                if ele[1]>min_l and ele[1]<=max_l:
+                    dd.append(ele[0])
+            if dd:
+                data_list.append([dd,max_l])
+
+
+        word_arr_list = []
+        slot_arr_list = []
+        intent_arr_list = []
+        real_len_arr_list = []
+        for index,(sent_list,max_len) in enumerate(data_list):
+            print(index)
+            word_arr = []
+            slot_arr = []
+            intent_arr = []
+            real_len_arr = []
+            real_len_arr1,word_arr1,slot_arr1,intent_arr1=[],[],[],[]
+
+            for sent in sent_list:
+                sent = sent.replace('\n', '')
+                sents = sent.split(self.split_token)
+                words,slot_labels,intent_labels=[],[],[]
+                words.append(sents[0].split(' '))
+                slot_labels.append(sents[1].split(' '))
+                intent_labels.append(sents[2].split(' '))
+
+                for sent, slot,intent in zip(words, slot_labels,intent_labels):
+                    real_len=0
+                    sent_list = []
+                    real_len = len(sent)
+                    for word in sent:
+                        word = word.lower()
+                        if word in self.vocab and word!='':
+                            sent_list.append(self.vocab[word])
+                        else:
+                            sent_list.append(0)
+
+
+                    slot_list = []
+                    for ll in slot:
+                        ll=str(ll.lower().replace('[','')).replace("'",'').replace("'",'').replace(',','')
+                        if ll in self.slot_vocab:
+                            slot_list.append(self.slot_vocab[ll])
+                        else:
+                            slot_list.append(self.slot_vocab['O'.lower()])
+
+                    intent_list=[]
+                    for ll in intent:
+                        ll=ll.lower()
+                        if ll in self.intent_vocab:
+                            intent_list.append(self.intent_vocab[ll])
+                        else:
+                            intent_list.append(0)
+
+                    intent_normal = [0] * self.intent_num
+                    for e in intent_list:
+                        try:
+                            intent_normal[e] = 1
+                        except:
+                            print(e)
+
+                    if len(sent_list) > max_len:
+                        new_sent_list = sent_list[0:max_len]
+                    else:
+                        new_sent_list = sent_list
+                        ss = [0] * (max_len - len(sent_list))
+                        new_sent_list.extend(ss)
+
+                    if len(slot_list) > max_len:
+                        new_slot_list = slot_list[0:max_len]
+                    else:
+                        new_slot_list = slot_list
+                        ss_l = [0] * (max_len - len(slot_list))
+                        new_slot_list.extend(ss_l)
+
+                    if real_len >= max_len:
+                        real_len = max_len
+
+                    real_len_arr.append(real_len)
+                    word_arr.append(new_sent_list)
+                    slot_arr.append(new_slot_list)
+                    intent_arr.append(intent_normal)
+                    del real_len
+                    del new_sent_list
+                    del new_slot_list
+                    del intent_normal
+
+            real_len_arr1 = np.array(real_len_arr)
+            word_arr1 = np.array(word_arr)
+            slot_arr1=np.array(slot_arr)
+            intent_arr1 = np.array(intent_arr)
+
+            word_arr_list.append(word_arr1)
+            slot_arr_list.append(slot_arr1)
+            intent_arr_list.append(intent_arr1)
+            real_len_arr_list.append(real_len_arr1)
+            del real_len_arr, word_arr, slot_arr, intent_arr,real_len_arr1, word_arr1, slot_arr1, intent_arr1
+            import gc
+            gc.collect()
+
+
+        return word_arr_list, slot_arr_list, intent_arr_list, real_len_arr_list
 
     def padd_sentences_no_buckets(self, sent_list):
         '''
@@ -382,11 +516,13 @@ class Intent_Slot_Data(object):
         batch_list = []
         ele = data_list[:]
         if self.use_auto_bucket:
-            word_arr, slot_arr, intent_arr, real_len_arr = self.padd_sentences(ele)
+            word_arr, slot_arr, intent_arr, real_len_arr = self.padd_sentences_infer(ele)
+            _logger.info('word:%s' % len(word_arr))
+
         else:
             word_arr, slot_arr, intent_arr, real_len_arr = self.padd_sentences_no_buckets(ele)
+            _logger.info('word:%s slot_shape:%s intent_shape:%s ' % (word_arr.shape, slot_arr.shape, intent_arr.shape))
 
-        _logger.info('word:%s slot_shape:%s intent_shape:%s ' % (word_arr.shape, slot_arr.shape, intent_arr.shape))
         return  word_arr, slot_arr, intent_arr, real_len_arr
 
     def get_train(self):
@@ -400,84 +536,149 @@ class Intent_Slot_Data(object):
         batch_list = []
         ele = data_list[:]
         if self.use_auto_bucket:
-            word_arr, slot_arr, intent_arr, real_len_arr = self.padd_sentences(ele)
+            word_arr, slot_arr, intent_arr, real_len_arr = self.padd_sentences_infer(ele)
+            _logger.info('word:%s' % len(word_arr))
+
         else:
             word_arr, slot_arr, intent_arr, real_len_arr = self.padd_sentences_no_buckets(ele)
+            _logger.info('word:%s slot_shape:%s intent_shape:%s ' % (word_arr.shape, slot_arr.shape, intent_arr.shape))
 
-        _logger.info('word:%s slot_shape:%s intent_shape:%s ' % (word_arr.shape, slot_arr.shape, intent_arr.shape))
         return  word_arr, slot_arr, intent_arr, real_len_arr
 
     def get_sent(self,sent_list):
 
-        res=[]
-        res_vec=[]
-        for sent in sent_list:
-            sent=''.join([e for e in sent.split(' ')])
-            ss_=['BOS']
-            sent=[e.lower() for e in jieba.cut(sent)]
-            ss_.extend(sent)
-            ss_.append('EOS')
-            sent=ss_
-            ss=[]
-            for word in sent:
-                word=word.lower()
-                if word in self.vocab:
-                    ss.append(self.vocab[word])
-                else:
-                    ss.append(self.vocab['NONE'])
 
-            if len(ss)>=self.max_length:
-                res_vec.append(self.max_length)
-                ss=ss[:self.max_length]
-            else:
-                res_vec.append(len(ss))
-                padd=[0]*(self.max_length-len(ss))
-                ss.extend(padd)
-            res.append(ss)
-        sent_arr=np.array(res)
-        sent_vec=np.array(res_vec)
-        return sent_arr,sent_vec
+        if self.use_auto_bucket:
+            pass
+        else:
+            res=[]
+            res_vec=[]
+            for sent in sent_list:
+                sent=''.join([e for e in sent.split(' ')])
+                ss_=['BOS']
+                sent=[e.lower() for e in jieba.cut(sent)]
+                ss_.extend(sent)
+                ss_.append('EOS')
+                sent=ss_
+                ss=[]
+                for word in sent:
+                    word=word.lower()
+                    if word in self.vocab:
+                        ss.append(self.vocab[word])
+                    else:
+                        ss.append(self.vocab['NONE'])
+
+                if len(ss)>=self.max_length:
+                    res_vec.append(self.max_length)
+                    ss=ss[:self.max_length]
+                else:
+                    res_vec.append(len(ss))
+                    padd=[0]*(self.max_length-len(ss))
+                    ss.extend(padd)
+                res.append(ss)
+            sent_arr=np.array(res)
+            sent_vec=np.array(res_vec)
+            return sent_arr,sent_vec
 
     def get_sent_char(self,sent_list):
 
-        res=[]
-        res_vec=[]
-        for sent in sent_list:
-            sent=''.join([e for e in sent.split(' ')])
-            ss_=['BOS']
+        if self.use_auto_bucket:
+            data_list=[]
+            for sent in sent_list:
+                sent = ''.join([e for e in sent.split(' ')])
+                ss_ = ['BOS']
+                sent = [e.lower() for e in jieba.cut(sent)]
+                ss = []
+                for word in sent:
+                    word = word.lower()
+                    if word not in ['bzxm', 'jb', 'qj', 'bxj', 'bxcp', 'eos', 'bos', 'bxzl', 'sy', 'bqx']:
+                        s = [e for e in word]
+                        ss.extend(s)
+                    else:
+                        ss.append(word)
+                sent = ss
+                ss_.extend(sent)
+                ss_.append('EOS')
+                sent = ss_
+                data_list.append(sent)
 
-            sent=[e.lower() for e in jieba.cut(sent)]
-            ss=[]
-            for word in sent:
-                word = word.lower()
-                if word not in ['bzxm', 'jb', 'qj', 'bxj', 'bxcp', 'eos', 'bos', 'bxzl', 'sy','bqx']:
-                    s = [e for e in word]
-                    ss.extend(s)
-                else:
-                    ss.append(word)
-            sent=ss
-            ss_.extend(sent)
-            ss_.append('EOS')
-            sent=ss_
-            ss=[]
-            for word in sent:
-                word=word.lower()
-                if word in self.vocab:
-                    ss.append(self.vocab[word])
-                else:
-                    ss.append(self.vocab['NONE'])
+            self.bucket_len.append(0)
+            bucket_len = list(set(self.bucket_len))
+            ss = [[ele, len(ele)] for ele in data_list]
+            ss.sort(key=lambda x: x[1])
+            res_list = []
+            for min_l, max_l in zip(bucket_len[:-1], bucket_len[1:]):
+                dd = []
+                for ele in ss:
+                    if ele[1] > min_l and ele[1] <= max_l:
+                        dd.append(ele[0])
+                        res_list.append([dd,max_l])
 
-            if len(ss)>=self.max_length:
-                res_vec.append(self.max_length)
-                ss=ss[:self.max_length]
-            else:
-                res_vec.append(len(ss))
-                padd=[0]*(self.max_length-len(ss))
-                ss.extend(padd)
-            res.append(ss)
-        sent_arr=np.array(res)
-        sent_vec=np.array(res_vec)
-        return sent_arr,sent_vec
+            sent_out_list,sent_len_out_list=[],[]
+            for sent_list,max_length in res_list:
+                res_vec=[]
+                res=[]
+                for sent in sent_list:
+                    ss = []
+                    for word in sent:
+                        word = word.lower()
+                        if word in self.vocab:
+                            ss.append(self.vocab[word])
+                        else:
+                            ss.append(self.vocab['NONE'])
+
+                    if len(ss) > max_length:
+                        res_vec.append(max_length)
+                        ss = ss[:max_length]
+                    else:
+                        res_vec.append(len(ss))
+                        padd = [0] * (max_length - len(ss))
+                        ss.extend(padd)
+                    res.append(ss)
+                sent_arr = np.array(res)
+                sent_vec = np.array(res_vec)
+                sent_out_list.append(sent_arr)
+                sent_len_out_list.append(sent_vec)
+            return sent_out_list, sent_len_out_list
+        else:
+            res=[]
+            res_vec=[]
+            for sent in sent_list:
+                sent=''.join([e for e in sent.split(' ')])
+                ss_=['BOS']
+
+                sent=[e.lower() for e in jieba.cut(sent)]
+                ss=[]
+                for word in sent:
+                    word = word.lower()
+                    if word not in ['bzxm', 'jb', 'qj', 'bxj', 'bxcp', 'eos', 'bos', 'bxzl', 'sy','bqx']:
+                        s = [e for e in word]
+                        ss.extend(s)
+                    else:
+                        ss.append(word)
+                sent=ss
+                ss_.extend(sent)
+                ss_.append('EOS')
+                sent=ss_
+                ss=[]
+                for word in sent:
+                    word=word.lower()
+                    if word in self.vocab:
+                        ss.append(self.vocab[word])
+                    else:
+                        ss.append(self.vocab['NONE'])
+
+                if len(ss)>=self.max_length:
+                    res_vec.append(self.max_length)
+                    ss=ss[:self.max_length]
+                else:
+                    res_vec.append(len(ss))
+                    padd=[0]*(self.max_length-len(ss))
+                    ss.extend(padd)
+                res.append(ss)
+            sent_arr=np.array(res)
+            sent_vec=np.array(res_vec)
+            return sent_arr,sent_vec
 
 
 
@@ -487,9 +688,22 @@ if __name__ == '__main__':
                               test_path="./dataset/dev_out_char.txt",
                               dev_path="./dataset/dev_out_char.txt", batch_size=20 ,max_length=30, flag="train_new",use_auto_bucket=False)
     #
-    for k,v in dd.intent_vocab.items():
-        print(k,v)
-    # sent,slot,intent,real_len,cur_len,loss_weight=dd.next_batch()
+    # for k,v in dd.vocab.items():
+    #     print(k,v)
+    for _ in range(300):
+        sent,slot,intent,real_len,_=dd.next_batch()
+        print(real_len)
+    # print(sent)
+    # print(slot)
+    # print(intent)
+    # print(real_len)
+
+    #
+    #
+    #
+    #
+    # print(sent)
+
     # print(loss_weight)
     # print(sent[0])
     # print(''.join([dd.id2sent[e] for e in sent[0]]))
@@ -497,12 +711,7 @@ if __name__ == '__main__':
     # #     print(sent.shape,slot.shape,intent.shape,real_len.shape,cur_len.shape)
     #     # print(dd.slot_vocab)
     #     # print(cur_len)
-    # sent='专业导医陪诊是什么服务'
-    # sent_arr=dd.get_sent([sent])
-    # print(sent_arr)
-    #     # print(sent_arr.shape)
+    sent='专业导医陪诊是什么服务'
+    sent_arr=dd.get_sent_char([sent])
 
-    '''
-[  3 683 502 684  46  28  41   6   0   0   0   0   0   0   0   0   0   0
-   0   0   0   0   0   0   0   0   0   0   0   0]
-bos专业导医陪诊是什么服务eosNONENONENONENONENONENONENONENONENONENONENONENONENONENONENONENONENONENONENONENONENONENONE'''
+
